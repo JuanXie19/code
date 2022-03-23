@@ -1,20 +1,24 @@
-shinyClust <- function(ClusterInput =NULL){
+# https://stackoverflow.com/questions/34384907/how-can-put-multiple-plots-side-by-side-in-shiny-r
+# https://excelquick.com/r-shiny/selectinput-dependent-on-another-input/
+# https://shiny.rstudio.com/reference/shiny/latest/updateSelectInput.html
+# https://shiny.rstudio.com/gallery/selectize-rendering-methods.html
+# https://shiny.rstudio.com/articles/layout-guide.html
+
+shinyClust <- function(ClusterInput = NULL, G.df = NULL){
 
 # load libraries
 	library(dplyr)
 	library(shinyBS)
 	library(shiny)
 	library(dtwclust)
-
 ui <- fluidPage(
-
-  # App title ----
+  ## title
   titlePanel("Clustering analysis of clonotype lineages"),
-
-  sidebarLayout(
-	wellPanel(	
-	
-		bsCollapse(id="clusterInfo", open="Clustering Details",
+  
+    fluidRow(
+      column(3,
+        wellPanel(
+            bsCollapse(id="clusterInfo", open="Clustering Details",
                    
                    bsCollapsePanel("Clustering Details",
                                    
@@ -22,9 +26,9 @@ ui <- fluidPage(
                                                label = "Type of clustering",
                                                choices = c("Partitional", "Hierarchical"),
                                                selected = 'Hierarchical'),
-									sliderInput(inputId = 'clustNum',
-												label = 'Number of clusters',
-												min = 2,max = 8,value = 2),
+									numericInput(inputId = 'clustNum',
+												label = 'Number of clusters(k)',
+												min = 2,value = 5),
 							
 									## only show this if clustering type is partitional
 									conditionalPanel(
@@ -50,148 +54,129 @@ ui <- fluidPage(
 												selected = 'average')
 									)									
 								)                                  
-                   )
-				),
-	mainPanel(
-		tabsetPanel(
-			tabPanel('Plot all lineages',
-				plotOutput('plotLineages'),
-				downloadButton('downloadLineage',label = 'Download lineage plot')
-			),
-			tabPanel('Plot clusters',
-				conditionalPanel(
+                   ),
+				   hr(),
+				   # this one depends on the value of clustNum
+				   sliderInput(inputId = 'clusterIndex',label = 'specify a cluster to show plots',min=1,max=7,value=1)    
+        ) #wellPanel
+      ),
+      column(9,
+		helpText('TEST'),
+		#textOutput(outputId = 'desc'),
+		fluidRow(
+			splitLayout(cellWidths=c('50%','50%')),
+			conditionalPanel(
 				condition = "input.clustertype=='Hierarchical'",
-				plotOutput('plot_hc')),
+				plotOutput('plotL_hc')),
 				conditionalPanel(
 				condition = "input.clustertype=='Partitional'",
-				plotOutput('plot_p'))
-			),
-			tabPanel('Summary',
-			conditionalPanel(
-			condition = "input.clustertype=='Hierarchical'",
-			verbatimTextOutput('summaryHC')),
-			conditionalPanel(
-			condition="input.clustertype=='Partitional'",
-			verbatimTextOutput('summaryP'))
-			),
-			tabPanel('Cluster label',
-			conditionalPanel(
-			condition = "input.clustertype=='Hierarchical'",
-			verbatimTextOutput('labelHC'),
-			downloadButton('downloadTableHC',label = 'Download lineage cluster label')),
-			conditionalPanel(
-			condition="input.clustertype=='Partitional'",
-			verbatimTextOutput('labelP'),
-			downloadButton('downloadTableP',label = 'Download lineage cluster labels'))		
-			)
-		)
+				plotOutput('plotL_p')),
+				conditionalPanel(
+				condition = "input.clustertype=='Hierarchical'",
+				plotOutput('plotUMAP_hc')),
+				conditionalPanel(
+				condition = "input.clustertype=='Partitional'",
+				plotOutput('plotUMAP_p'))			
 		
-    )		   
+		)
+			
+	  )
+   )
   )
- )
 
+	   
 
-	server <- function(input,output) {
+server <- function(input,output,session) {
 		
-		df <-ClusterInput@lineages
+		df <- ClusterInput@lineages
 		
-		itermax <-reactive(input$itermax)
-		centroid <-reactive(input$centroid)
-		seed <-reactive(input$setSeed)
-		k <-reactive(input$clustNum)
+		itermax <- reactive(input$itermax)
+		centroid <- reactive(input$centroid)
+		seed <- reactive(input$setSeed)
+		k <- reactive(input$clustNum)
 	
+		method <- reactive(input$lineage)
+		
+		if(FALSE){observeEvent(input$clustNum,{
+			updateSliderInput(session,'clusterIndex',max = input$clustNum)
 	
-		method <-reactive(input$lineage)
-        ## plot all lineages
+		})}
 		
-		plotLineages <-function(){
-			UMAP1_min <- floor(min(sapply(df,function(x) min(x$UMAP_1))))-1
-			UMAP1_max <- ceiling(max(sapply(df,function(x) max(x$UMAP_2))))+1
-			UMAP2_min <- floor(min(sapply(df,function(x) min(x$UMAP_2))))-1
-			UMAP2_max <- ceiling(max(sapply(df,function(x) max(x$UMAP_2))))+1
 		
-			plot(df[[1]]$UMAP_1,df[[1]]$UMAP_2,type='l',xlab='UMAP1',col='blue',ylab='UMAP2',xlim=c(UMAP1_min,UMAP1_max),ylim=c(UMAP2_min,UMAP2_max),pch=19,lwd=1.5)
-			text(df[[1]]$UMAP_1,df[[1]]$UMAP_2,labels=rownames(df[[1]]),cex=0.5)
+		
+        ClusterID <- reactive(input$clusterIndex)
 	
-			for (i in 2:length(df)){
-				lines(df[[i]]$UMAP_1,df[[i]]$UMAP_2,type='l',col="blue",pch=19,cex=0.5,lwd=1.5)
-				text(df[[i]]$UMAP_1,df[[i]]$UMAP_2,labels=rownames(df[[i]]),cex=0.5)
-			}	
+		## get xlim and ylim
 		
+		UMAP1_min <- floor(min(sapply(df,function(x) min(x$UMAP_1))))-1
+		UMAP1_max <- ceiling(max(sapply(df,function(x) max(x$UMAP_2))))+1
+		UMAP2_min <- floor(min(sapply(df,function(x) min(x$UMAP_2))))-1
+		UMAP2_max <- ceiling(max(sapply(df,function(x) max(x$UMAP_2))))+1
+		NUM <-seq(1,length(df))
 		
-		}
-		output$plotLineages <-renderPlot({
-			print(plotLineages())
-		})
+	
+		## plot component cells on UMAP
+		output$plotUMAP_p <- renderPlot({
 		
-		output$downloadLineage <-downloadHandler (
-			filename = function(){
-				'AllClonotype Lineages.pdf'
-			},
-			content = function(file){
-				pdf(file)
-				print(plotLineages())
-				dev.off()			
+		  part.dtw <-tsclust(df,type='p',k=k(),seed=seed(),iter.max=itermax(),centroid=centroid())
+		  CLONES <- names(which(part.dtw@cluster == ClusterID()))
+		  INDEX <- which(G.df$cdr3 %in% CLONES)
+		  G.df.highlight <-G.df[INDEX,]
+		  ggplot(G.df,aes(UMAP1,UMAP2,color=G))+geom_point(alpha=0.3,shape=1,size=0.3)+
+			geom_point(data=G.df.highlight,aes(UMAP1,UMAP2),size=1.2,shape=17)+theme_bw()
+		},height='50%',width='60%')
+	
+		output$plotUMAP_hc <-renderPlot({
+			hc.dtw <-tsclust(df,type='h',k=k(),control=hierarchical_control(method=method()))
+			CLONES <- names(which(hc.dtw@cluster == ClusterID()))
+			INDEX <- which(G.df$cdr3 %in% CLONES)
+			G.df.highlight <-G.df[INDEX,]
+			ggplot(G.df,aes(UMAP1,UMAP2,color=G))+geom_point(alpha=0.3,shape=1,size=0.3)+
+				geom_point(data=G.df.highlight,aes(UMAP1,UMAP2),size=1.2,shape=17)+theme_bw()
+		},height='50%',width='60%')
+		
+		## plot component lineages
+		output$plotL_p <- renderPlot({
+		
+		  part.dtw <-tsclust(df,type='p',k=k(),seed=seed(),iter.max=itermax(),centroid=centroid())
+		  
+		  INDEX <-which(part.dtw@cluster== ClusterID())
+		  INDEX2 <-NUM[-INDEX]
+		  plot(df[[1]]$UMAP_1,df[[1]]$UMAP_2,type='l',xlab='UMAP1',col='grey',ylab='UMAP2',xlim=c(UMAP1_min,UMAP1_max),ylim=c(UMAP2_min,UMAP2_max),pch=19,lwd=1.1)
+		  text(df[[1]]$UMAP_1,df[[1]]$UMAP_2,labels=rownames(df[[i]]),cex=0.4,col='grey')
+
+		for (i in INDEX2){
+			lines(df[[i]]$UMAP_1,df[[i]]$UMAP_2,type='l',col="grey",pch=19,cex=0.4,lwd=1.1)
+			text(df[[i]]$UMAP_1,df[[i]]$UMAP_2,labels=rownames(df[[i]]),cex=0.4,col='grey')
 			}
-		)
-		
-		## plot clusters of lineages
-		output$plot_p <- renderPlot({
-		
-		  part.dtw <-tsclust(df,type='p',k=k(),seed=12345,iter.max=itermax(),centroid=centroid())
-		  plot(part.dtw)
-		})
+
+		for (j in INDEX){
+			print(j)
+			lines(df[[j]][,1],df[[j]][,2],type='l',col="blue",pch=19,cex=0.4,lwd=1.2)
+			text(df[[j]][,1],df[[j]][,2],labels=rownames(df[[j]]),cex=0.4)
+			}
+		},height='50%',width='50%')
 	
-		output$plot_hc <-renderPlot({
+		output$plotL_hc <-renderPlot({
 			hc.dtw <-tsclust(df,type='h',k=k(),control=hierarchical_control(method=method()))
-			plot(hc.dtw,type='series')
-		})
+			INDEX <-which(hc.dtw@cluster== ClusterID())
+			INDEX2 <-NUM[-INDEX]
+			plot(df[[1]]$UMAP_1,df[[1]]$UMAP_2,type='l',xlab='UMAP1',col='grey',ylab='UMAP2',xlim=c(UMAP1_min,UMAP1_max),ylim=c(UMAP2_min,UMAP2_max),pch=19,lwd=1.1)
+			text(df[[1]]$UMAP_1,df[[1]]$UMAP_2,labels=rownames(df[[i]]),cex=0.4,col='grey')
+
+			for (i in INDEX2){
+				lines(df[[i]]$UMAP_1,df[[i]]$UMAP_2,type='l',col="grey",pch=19,cex=0.4,lwd=1.1)
+				text(df[[i]]$UMAP_1,df[[i]]$UMAP_2,labels=rownames(df[[i]]),cex=0.4,col='grey')
+			}
+
+			for (j in INDEX){
+				lines(df[[j]][,1],df[[j]][,2],type='l',col="blue",pch=19,cex=0.4,lwd=1.2)
+				text(df[[j]][,1],df[[j]][,2],labels=rownames(df[[j]]),cex=0.4)
+			}			
+			
+		},height='50%',width='50%')
 	
-		output$summaryP <-renderPrint({
-	
-			part.dtw <-tsclust(df,type='p',k=k(),seed=12345,iter.max=itermax(),centroid=centroid())
-			part.dtw
-		})
-	
-		output$summaryHC <-renderPrint({
-			hc.dtw <-tsclust(df,type='h',k=k(),control=hierarchical_control(method=method()))
-			hc.dtw
-	
-		})
-	
-		output$labelP <- renderPrint({
-	
-			part.dtw <- tsclust(df,type='p',k=k(),seed=12345,iter.max=itermax(),centroid=centroid())
-			part.dtw@cluster
-		})
-	
-		output$labelHC <- renderPrint({
-			hc.dtw <- tsclust(df,type='h',k=k(),control=hierarchical_control(method=method()))
-			hc.dtw@cluster
-	
-		})
 		
-		output$downloadTableHC <- downloadHandler(
-			filename = function(){
-				'lineage cluster labels.csv'
-			},
-			content = function(file){
-			hc.dtw <- tsclust(df,type='h',k=k(),control=hierarchical_control(method=method()))
-			temp <- as.data.frame(hc.dtw@cluster)
-			write.csv(temp,file)			
-			}		
-		)
-		
-		output$downloadTableP <- downloadHandler(
-			filename = function(){
-				'lineage cluster labels.csv'
-			},
-			content = function(file){
-			part.dtw <- tsclust(df,type='p',k=k(),seed=12345,iter.max=itermax(),centroid=centroid())
-			temp <- as.data.frame(part.dtw@cluster)
-			write.csv(temp,file)			
-			}		
-		)
 		
 		
 	}
