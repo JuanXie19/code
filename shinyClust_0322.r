@@ -1,8 +1,3 @@
-# https://stackoverflow.com/questions/34384907/how-can-put-multiple-plots-side-by-side-in-shiny-r
-# https://excelquick.com/r-shiny/selectinput-dependent-on-another-input/
-# https://shiny.rstudio.com/reference/shiny/latest/updateSelectInput.html
-# https://shiny.rstudio.com/gallery/selectize-rendering-methods.html
-
 shinyClust <- function(ClusterInput = NULL, G.df = NULL){
 
 # load libraries
@@ -10,16 +5,14 @@ shinyClust <- function(ClusterInput = NULL, G.df = NULL){
 	library(shinyBS)
 	library(shiny)
 	library(dtwclust)
-
 ui <- fluidPage(
-
-  # App title ----
+  ## title
   titlePanel("Clustering analysis of clonotype lineages"),
-
-  sidebarLayout(
-	wellPanel(	
-	
-		bsCollapse(id="clusterInfo", open="Clustering Details",
+  
+    fluidRow(
+      column(3,
+        wellPanel(
+            bsCollapse(id="clusterInfo", open="Clustering Details",
                    
                    bsCollapsePanel("Clustering Details",
                                    
@@ -57,12 +50,15 @@ ui <- fluidPage(
 								)                                  
                    ),
 				   hr(),
-				   numericInput('ClusterIndex',label = 'select a cluster to show plots',value = 1)
-				),
-	mainPanel('Plot clusters',
+				   numericInput('ClusterIndex',label = 'select a cluster to show plots',value = 1)    
+        ) #wellPanel
+      ),
+      column(9,
+		helpText('TEST'),
+		#textOutput(outputId = 'desc'),
 		fluidRow(
-			splitLayout(cellWidths= c('50%','50%'),
-				conditionalPanel(
+			splitLayout(cellWidths=c('50%','50%')),
+			conditionalPanel(
 				condition = "input.clustertype=='Hierarchical'",
 				plotOutput('plotL_hc')),
 				conditionalPanel(
@@ -73,18 +69,17 @@ ui <- fluidPage(
 				plotOutput('plotUMAP_hc')),
 				conditionalPanel(
 				condition = "input.clustertype=='Partitional'",
-				plotOutput('plotUMAP_p')),
-			)
-		)
-	)	
-		 
-	)
+				plotOutput('plotUMAP_p'))			
 		
-   )		   
+		)
+			
+	  )
+   )
+  )
 
+	   
 
-
-	server <- function(input,output,session) {
+server <- function(input,output,session) {
 		
 		df <- ClusterInput@lineages
 		
@@ -114,8 +109,8 @@ ui <- fluidPage(
 		  INDEX <- which(G.df$cdr3 %in% CLONES)
 		  G.df.highlight <-G.df[INDEX,]
 		  ggplot(G.df,aes(UMAP1,UMAP2,color=G))+geom_point(alpha=0.3,shape=1,size=0.3)+
-			geom_point(data=G.df.highlight,aes(UMAP1,UMAP2),size=1.2,shape=17)+theme_bw()
-		})
+			geom_point(data=G.df.highlight,aes(UMAP1,UMAP2),size=1.2,shape=17)+theme_bw()+theme(legend.position="bottom")
+		},height='50%',width='50%')
 	
 		output$plotUMAP_hc <-renderPlot({
 			hc.dtw <-tsclust(df,type='h',k=k(),control=hierarchical_control(method=method()))
@@ -123,8 +118,8 @@ ui <- fluidPage(
 			INDEX <- which(G.df$cdr3 %in% CLONES)
 			G.df.highlight <-G.df[INDEX,]
 			ggplot(G.df,aes(UMAP1,UMAP2,color=G))+geom_point(alpha=0.3,shape=1,size=0.3)+
-				geom_point(data=G.df.highlight,aes(UMAP1,UMAP2),size=1.2,shape=17)+theme_bw()
-		})
+				geom_point(data=G.df.highlight,aes(UMAP1,UMAP2),size=1.2,shape=17)+theme_bw()+theme(legend.position="bottom")
+		},height='50%',width='50%')
 		
 		## plot component lineages
 		output$plotL_p <- renderPlot({
@@ -146,7 +141,7 @@ ui <- fluidPage(
 			lines(df[[j]][,1],df[[j]][,2],type='l',col="blue",pch=19,cex=0.4,lwd=1.2)
 			text(df[[j]][,1],df[[j]][,2],labels=rownames(df[[j]]),cex=0.4)
 			}
-		})
+		},height='50%',width='50%')
 	
 		output$plotL_hc <-renderPlot({
 			hc.dtw <-tsclust(df,type='h',k=k(),control=hierarchical_control(method=method()))
@@ -165,7 +160,7 @@ ui <- fluidPage(
 				text(df[[j]][,1],df[[j]][,2],labels=rownames(df[[j]]),cex=0.4)
 			}			
 			
-		})
+		},height='50%',width='50%')
 	
 		
 		
